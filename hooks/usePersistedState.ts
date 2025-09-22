@@ -10,6 +10,6 @@ export function usePersistedState<T>(key: string, initialValue: T) {
     saveToLocalStorage(key, state);
   }, [key, state]);
 
-    return [state, setState] as const; // 'as const' ensures the tuple type is preserved
-                                    // it means the return type is a tuple of [T, React.Dispatch<React.SetStateAction<T>>]
+  return [state, setState] as const; // 'as const' ensures the tuple type is preserved
+  // it means the return type is a tuple of [T, React.Dispatch<React.SetStateAction<T>>]
 }

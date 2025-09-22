@@ -1,5 +1,9 @@
-export interface Todo {
-  id: number;
-  text: string;
+export type Todo = {
+  id: string;
+  title: string;
+  description?: string;
   completed: boolean;
-}
+  priority?: number;
+  dueDate?: Date;
+  createdAt: Date;
+};

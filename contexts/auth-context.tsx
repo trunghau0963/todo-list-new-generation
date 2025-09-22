@@ -12,15 +12,22 @@ import {
   useSignInWithGoogle,
   useSignOut,
 } from "react-firebase-hooks/auth";
-import { auth } from "@/firebase/config";
-// import { FirebaseError } from "firebase/auth";
+import { auth, db } from "@/firebase/config";
+import {
+  collection,
+  addDoc,
+  getDocs,
+  deleteDoc,
+  doc,
+  updateDoc,
+  setDoc,
+  getDoc,
+} from "firebase/firestore";
 
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  avatar?: string;
-}
+import { Todo } from "@/models/Todo";
+import { User } from "@/models/User";
+
+// import { FirebaseError } from "firebase/auth";
 
 interface AuthContextType {
   user: User | null;
@@ -126,11 +133,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signUp = async (email: string, password: string) => {
     setIsLoading(true);
     try {
+      const usersCollection = collection(db, "users");
+
+      // Check if user with email already exists
+      const emailQuery = await getDocs(usersCollection);
+      const userExistsArray = emailQuery.docs.map((doc) => doc.data().email);
+      if (userExistsArray.includes(email)) {
+        setIsLoading(false);
+        return false;
+      }
+
       const result = await createUserWithEmailAndPassword(email, password);
-      console.log("Sign up result:", result);
+      if (!result) {
+        setIsLoading(false);
+        return false;
+      }
+
+      // Add user to firestore (this will create the collection if it doesn't exist)
+      await setDoc(doc(db, "users", result.user.uid), {
+        uid: result.user.uid,
+        name: result.user.email?.split("@")[0] || "User",
+        email: result.user.email,
+        avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${result.user.email}`,
+        createdAt: new Date(),
+      });
+
+      const todosCollection = collection(db, "users", result.user.uid, "todos");
+      await setDoc(doc(todosCollection), {
+        title: "Welcome to Todo App 🎉",
+        description: "This is your first task!",
+        complete: false,
+        dueDate: null,
+        createdAt: new Date(),
+      });
+
+      console.log("User created:", result);
+
       setIsLoading(false);
-      return !!result;
+      return true;
     } catch (err) {
+      console.error("Error during signup:", err);
       setIsLoading(false);
       return false;
     }
@@ -140,9 +182,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     try {
       const result = await signInWithGoogle();
+
+      // Check if user was successfully authenticated
+      if (result) {
+        const { user } = result;
+
+        // Check if user already exists in Firestore
+        const userDoc = doc(db, "users", user.uid);
+        const userSnap = await getDoc(userDoc);
+
+        // If user doesn't exist in Firestore, create them
+        if (!userSnap.exists()) {
+          // Add user to Firestore
+          await setDoc(userDoc, {
+            uid: user.uid,
+            name: user.displayName || user.email?.split("@")[0] || "User",
+            email: user.email,
+            avatar:
+              user.photoURL ||
+              `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.email}`,
+            createdAt: new Date(),
+          });
+
+          // Create welcome todo
+          const todosCollection = collection(db, "users", user.uid, "todos");
+          await setDoc(doc(todosCollection), {
+            title: "Welcome to Todo App 🎉",
+            description: "This is your first task!",
+            completed: false,
+            dueDate: null,
+            createdAt: new Date(),
+          });
+
+          console.log("Google user created in Firestore:", user.uid);
+        }
+      }
+
       setIsLoading(false);
       return !!result;
     } catch (err) {
+      console.error("Google login error:", err);
       setIsLoading(false);
       return false;
     }

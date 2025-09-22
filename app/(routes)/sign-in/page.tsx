@@ -6,7 +6,7 @@ import type React from "react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
 import { motion } from "framer-motion";
-import { usePersistedState } from "@/hooks/userPersistedState";
+import { usePersistedState } from "@/hooks/usePersistedState";
 import { toast } from "sonner";
 
 import { Eye, EyeOff } from "lucide-react";
@@ -75,6 +75,7 @@ export default function LoginPage() {
 
   const handleSwitchToSignUp = () => {
     router.push("/sign-up");
+    toast("Switched to Sign Up page");
   };
 
   return (
