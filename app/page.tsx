@@ -2,7 +2,7 @@
 import { useState, useEffect, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Trash2, Plus, Edit2 } from "lucide-react";
+import { Trash2, Plus, Edit2, GripVertical, Eye } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AuthProvider, useAuth } from "@/contexts/auth-context";
 import NavigationBar from "@/components/navigation-bar";
@@ -10,10 +10,41 @@ import type { Todo } from "@/models/Todo";
 import type { FilterType } from "@/consts/type";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import { useTodos } from "@/hooks/useTodo";
-import { addTodo, deleteTodo, toggleTodo } from "@/lib/todos";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { addTodo, deleteTodo, toggleTodo, updateTodo } from "@/lib/todos";
 import { toast } from "sonner";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  DragOverlay,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { TaskEditDialog } from "@/components/task-edit-dialog";
+import { TaskViewDialog } from "@/components/task-view-dialog";
+import { TaskItem } from "@/components/task-item";
+import { SortableItem } from "@/components/custom/sortable-item";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
+export default function TodoApp() {
+  const queryClient = new QueryClient();
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <TodoAppContent />
+      </AuthProvider>
+    </QueryClientProvider>
+  );
+}
 
 function TodoAppContent() {
   // Create a client
@@ -30,6 +61,17 @@ function TodoAppContent() {
   const [xp, setXp] = useState(0);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [viewDialogOpen, setViewDialogOpen] = useState(false);
+  const [selectedTodo, setSelectedTodo] = useState<Todo | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   const currentLevel = Math.floor(xp / 10) + 1;
   const xpInCurrentLevel = xp % 10;
@@ -130,11 +172,12 @@ function TodoAppContent() {
 
   const saveEdit = (id: string) => {
     if (editValue.trim() !== "") {
-      // setTodos(
-      //   todos.map((todo) =>
-      //     todo.id === id ? { ...todo, text: editValue.trim() } : todo
-      //   )
-      // );
+      const updatedTodos = todos.map((todo) =>
+        todo.id === id ? { ...todo, title: editValue } : todo
+      );
+      // setTodos(updatedTodos);
+      updateTodo(user.id, id, { title: editValue });
+      toast.success("Task updated");
     }
     setEditingId(null);
     setEditValue("");
@@ -192,7 +235,84 @@ function TodoAppContent() {
     }
   };
 
-  const filteredTodos = todos.filter((todo) => {
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as string);
+  };
+
+  // const handleDragEnd = (event: DragEndEvent) => {
+  //   const { active, over } = event;
+
+  //   if (over && active.id !== over.id) {
+  //     setTodos((items) => {
+  //       const oldIndex = items.findIndex((item) => item.id === active.id);
+  //       const newIndex = items.findIndex((item) => item.id === over.id);
+
+  //       const newItems = arrayMove(items, oldIndex, newIndex);
+  //       return newItems.map((item, index) => ({
+  //         ...item,
+  //         priority: newItems.length - index,
+  //       }));
+  //     });
+  //   }
+
+  //   setActiveId(null);
+  // };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = todos.findIndex((item) => item.id === active.id);
+    const newIndex = todos.findIndex((item) => item.id === over.id);
+
+    const reordered = arrayMove(todos, oldIndex, newIndex);
+
+    reordered.forEach(async (item, index) => {
+      await updateTodo(user.id, item.id, {
+        priority: reordered.length - index,
+      });
+    });
+
+    setActiveId(null);
+  };
+
+  const handleViewTask = (todo: Todo) => {
+    setSelectedTodo(todo);
+    setViewDialogOpen(true);
+  };
+
+  const handleEditTask = (todo: Todo) => {
+    setSelectedTodo(todo);
+    setEditDialogOpen(true);
+  };
+
+  // const handleSaveTask = (updatedTodo: Todo) => {
+  //   setTodos(
+  //     todos.map((todo) => (todo.id === updatedTodo.id ? updatedTodo : todo))
+  //   );
+  //   setEditDialogOpen(false);
+  //   setSelectedTodo(null);
+  // };
+
+  const handleSaveTask = async (updatedTodo: Todo) => {
+    if (user) {
+      await updateTodo(user.id, updatedTodo.id, {
+        title: updatedTodo.title,
+        description: updatedTodo.description,
+        completed: updatedTodo.completed,
+        dueDate: updatedTodo.dueDate,
+      });
+    }
+    setEditDialogOpen(false);
+    toast.success(`Task ${updatedTodo.priority} updated successfully!`);
+    setSelectedTodo(null);
+  };
+
+  const sortedTodos = [...todos].sort(
+    (a, b) => (b.priority || 0) - (a.priority || 0)
+  );
+
+  const filteredTodos = sortedTodos.filter((todo) => {
     if (filter === "active") return !todo.completed;
     if (filter === "completed") return todo.completed;
     return true;
@@ -239,8 +359,12 @@ function TodoAppContent() {
     </div>
   );
 
-  console.log("Rendering TodoAppContent with todos:", todos);
-  console.log("Filtered todos:", filteredTodos);
+  const activeTodo = activeId
+    ? filteredTodos.find((todo) => todo.id === activeId)
+    : null;
+  const activeIndex = activeTodo
+    ? filteredTodos.findIndex((todo) => todo.id === activeId)
+    : -1;
 
   return (
     <div
@@ -303,16 +427,14 @@ function TodoAppContent() {
             >
               <div className="flex items-center justify-between">
                 <div className="flex gap-6">
-                  {(
-                    [
-                      ["all", "All"],
-                      ["active", "Active"],
-                      ["completed", "Completed"],
-                    ] as [FilterType, string][]
-                  ).map(([filterType, label]) => (
+                  {[
+                    ["all", "All"],
+                    ["active", "Active"],
+                    ["completed", "Completed"],
+                  ].map(([filterType, label]) => (
                     <button
                       key={filterType}
-                      onClick={() => setFilter(filterType)}
+                      onClick={() => setFilter(filterType as FilterType)}
                       className={`relative text-sm font-medium transition-all duration-200 pb-2 ${
                         filter === filterType
                           ? isDarkMode
@@ -399,130 +521,70 @@ function TodoAppContent() {
                 </p>
               </div>
             ) : (
-              <div className="space-y-0">
-                <AnimatePresence mode="popLayout">
-                  {filteredTodos.map((todo) => (
-                    <motion.div
-                      key={todo.id}
-                      layout
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{
-                        opacity: 0,
-                        scale: 0.95,
-                        transition: { duration: 0.15 },
-                      }}
-                      transition={{
-                        type: "spring",
-                        bounce: 0.2,
-                        duration: 0.4,
-                      }}
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext
+                  items={filteredTodos.map((todo) => todo.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="space-y-0">
+                    <AnimatePresence mode="popLayout">
+                      {filteredTodos.map((todo, index) => (
+                        <SortableItem
+                          key={todo.id}
+                          todo={todo}
+                          index={index}
+                          isDarkMode={isDarkMode}
+                          editingId={editingId}
+                          editValue={editValue}
+                          setEditValue={setEditValue}
+                          toggleTodo={handleToggle}
+                          deleteTodo={handleDelete}
+                          startEditing={startEditing}
+                          saveEdit={saveEdit}
+                          cancelEdit={cancelEdit}
+                          handleEditKeyPress={handleEditKeyPress}
+                          onViewTask={handleViewTask}
+                          onEditTask={handleEditTask}
+                        />
+                      ))}
+                    </AnimatePresence>
+                  </div>
+                </SortableContext>
+                <DragOverlay>
+                  {activeTodo ? (
+                    <div
+                      className={`transform rotate-3 scale-105 ${
+                        isDarkMode
+                          ? "bg-gray-800 border-gray-600"
+                          : "bg-white border-gray-200"
+                      } border rounded-lg shadow-2xl p-4 cursor-grabbing`}
                     >
-                      <div
-                        className={`group py-4 border-b rounded-sm transition-all duration-200 ${
-                          isDarkMode
-                            ? "border-gray-700 hover:bg-gray-700/50"
-                            : "border-gray-100 hover:bg-gray-50"
-                        }`}
-                      >
-                        <div className="flex items-center gap-4">
-                          <button
-                            onClick={() =>
-                              handleToggle(todo.id, !todo.completed)
-                            }
-                            className={`w-4 h-4 border rounded-sm transition-all duration-200 hover:shadow-sm flex items-center justify-center ${
-                              todo.completed
-                                ? isDarkMode
-                                  ? "bg-white border-white"
-                                  : "bg-gray-900 border-gray-900"
-                                : isDarkMode
-                                ? "bg-gray-800 hover:bg-gray-700 border-gray-600 hover:border-gray-500"
-                                : "bg-white hover:bg-gray-50 border-gray-300 hover:border-gray-400"
-                            }`}
-                          >
-                            {todo.completed && (
-                              <svg
-                                className={`w-2.5 h-2.5 ${
-                                  isDarkMode ? "text-gray-900" : "text-white"
-                                }`}
-                                fill="currentColor"
-                                viewBox="0 0 20 20"
-                              >
-                                <path
-                                  fillRule="evenodd"
-                                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                  clipRule="evenodd"
-                                />
-                              </svg>
-                            )}
-                          </button>
-
-                          {editingId === todo.id ? (
-                            <input
-                              type="text"
-                              value={editValue}
-                              onChange={(e) => setEditValue(e.target.value)}
-                              onKeyDown={(e) => handleEditKeyPress(e, todo.id)}
-                              onBlur={() => saveEdit(todo.id)}
-                              className={`flex-1 text-lg font-normal bg-transparent border-0 border-b pb-1 transition-all duration-200 focus:outline-none ${
-                                isDarkMode
-                                  ? "border-gray-500 text-white focus:border-gray-400"
-                                  : "border-gray-300 text-gray-900 focus:border-gray-500"
-                              }`}
-                              autoFocus
-                            />
-                          ) : (
-                            <span
-                              className={`flex-1 text-lg font-normal transition-all duration-200 ${
-                                todo.completed
-                                  ? isDarkMode
-                                    ? "line-through text-gray-500"
-                                    : "line-through text-gray-400"
-                                  : isDarkMode
-                                  ? "text-white"
-                                  : "text-gray-900"
-                              }`}
-                            >
-                              {todo.title}
-                            </span>
-                          )}
-
-                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200">
-                            {editingId !== todo.id && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() =>
-                                  startEditing(todo.id, todo.title)
-                                }
-                                className={`h-8 w-8 p-0 rounded-md transition-all duration-200 ${
-                                  isDarkMode
-                                    ? "text-gray-500 hover:text-gray-300 hover:bg-gray-600"
-                                    : "text-gray-300 hover:text-gray-500 hover:bg-gray-100"
-                                }`}
-                              >
-                                <Edit2 className="w-4 h-4" />
-                              </Button>
-                            )}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDelete(todo.id)}
-                              className={`h-8 w-8 p-0 rounded-md transition-all duration-200 ${
-                                isDarkMode
-                                  ? "text-gray-500 hover:text-gray-300 hover:bg-gray-600"
-                                  : "text-gray-300 hover:text-gray-500 hover:bg-gray-100"
-                              }`}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-              </div>
+                      <TaskItem
+                        todo={activeTodo}
+                        index={activeIndex}
+                        isDarkMode={isDarkMode}
+                        editingId={editingId}
+                        editValue={editValue}
+                        setEditValue={setEditValue}
+                        toggleTodo={handleToggle}
+                        deleteTodo={handleDelete}
+                        startEditing={startEditing}
+                        saveEdit={saveEdit}
+                        cancelEdit={cancelEdit}
+                        handleEditKeyPress={handleEditKeyPress}
+                        onViewTask={handleViewTask}
+                        onEditTask={handleEditTask}
+                        isDragging={true}
+                      />
+                    </div>
+                  ) : null}
+                </DragOverlay>
+              </DndContext>
             )}
           </div>
 
@@ -547,17 +609,24 @@ function TodoAppContent() {
           )}
         </div>
       </div>
-    </div>
-  );
-}
 
-export default function TodoApp() {
-  const queryClient = new QueryClient();
-  return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <TodoAppContent />
-      </AuthProvider>
-    </QueryClientProvider>
+      {selectedTodo && (
+        <>
+          <TaskEditDialog
+            todo={selectedTodo}
+            open={editDialogOpen}
+            onOpenChange={setEditDialogOpen}
+            onSave={handleSaveTask}
+            isDarkMode={isDarkMode}
+          />
+          <TaskViewDialog
+            todo={selectedTodo}
+            open={viewDialogOpen}
+            onOpenChange={setViewDialogOpen}
+            isDarkMode={isDarkMode}
+          />
+        </>
+      )}
+    </div>
   );
 }

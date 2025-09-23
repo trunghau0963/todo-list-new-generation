@@ -29,12 +29,13 @@ export function TaskEditDialog({ todo, open, onOpenChange, onSave, isDarkMode }:
   }, [todo])
 
   const handleSave = () => {
+    console.log("Saving todo:", { ...todo, title, description, completed })
     if (title.trim()) {
       onSave({
         ...todo,
         title: title.trim(),
         description: description.trim(),
-        completed,
+        completed: completed,
       })
     }
   }
@@ -100,7 +101,7 @@ export function TaskEditDialog({ todo, open, onOpenChange, onSave, isDarkMode }:
             <Checkbox
               id="completed"
               checked={completed}
-              onCheckedChange={(checked) => setCompleted(checked as boolean)}
+              onCheckedChange={() => setCompleted(!todo.completed)}
               className={`${
                 isDarkMode
                   ? "border-gray-600 data-[state=checked]:bg-white data-[state=checked]:border-white"
