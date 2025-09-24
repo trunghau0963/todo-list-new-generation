@@ -63,7 +63,7 @@ export default function LoginPage() {
       setError("");
       const success = await loginWithGoogle();
       if (!success) {
-        toast.error("Google login failed. Please try again.");
+        toast.error("Google login failed. Please try again in a moment.");
         return;
       }
       router.push("/");
