@@ -32,7 +32,7 @@ export default function TodoList() {
               checked={todo.completed}
               onChange={() => toggleTodo(user.id, todo.id, !todo.completed)}
             />
-            {todo.text}
+            {todo.title}
             <button onClick={() => deleteTodo(user.id, todo.id)}>x</button>
           </li>
         ))}
