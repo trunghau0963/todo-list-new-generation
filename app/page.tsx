@@ -203,6 +203,19 @@ function TodoAppContent() {
     try {
       if (user) await toggleTodo(user.id, id, completed);
       toast.success(`Task marked as ${completed ? "completed" : "incomplete"}`);
+
+      todos.map((todo) => {
+        if (todo.id === id) {
+          const updatedTodo = { ...todo, completed: !todo.completed };
+          if (!todo.completed && updatedTodo.completed) {
+            setXp((prev) => prev + 1);
+          } else if (todo.completed && !updatedTodo.completed) {
+            setXp((prev) => Math.max(0, prev - 1));
+          }
+          return updatedTodo;
+        }
+        return todo;
+      });
     } catch (error) {
       console.error("Error toggling task:", error);
       toast.error("Failed to toggle task");
